@@ -3,8 +3,7 @@
 import qualified Data.ByteString.Char8           as BC (pack, unpack)
 import qualified Data.ByteString.Lazy            as LB (empty, fromStrict,
                                                         readFile)
-import           Data.List                       (isPrefixOf)
-import qualified Data.Text                       as T (Text, pack, unpack)
+import qualified Data.Text                       as T (pack, unpack)
 import           Network.Mime                    (MimeType, defaultMimeLookup)
 import           System.Directory                (doesFileExist)
 import           System.FilePath                 (dropDrive, (</>))
@@ -65,13 +64,11 @@ program Options{getHost = host, getPort = port, getPath = path} = do
 
 application :: FilePath -> ScottyM ()
 application root = do
-  get    (matchPath ["file"])   $ getFileHandler    root
+  get matchPath $ getFileHandler root
 
-matchPath :: [T.Text] -> RoutePattern
-matchPath strs = function $ \req ->
-  if strs `isPrefixOf` pathInfo req then
-    Just [("path", LT.pack $ foldr ((</>) . T.unpack) "" (drop 1 $ pathInfo req))]
-  else Nothing
+matchPath :: RoutePattern
+matchPath = function $ \req ->
+  Just [("path", LT.pack $ foldr ((</>) . T.unpack) "" (pathInfo req))]
 
 getFileHandler :: FilePath -> ActionM ()
 getFileHandler root = do
