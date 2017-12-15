@@ -51,4 +51,5 @@ executable image-vips
     , text
     , wai
     , warp
+    , lrucaching
   default-language: Haskell2010

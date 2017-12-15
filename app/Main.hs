@@ -1,24 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.ByteString.Char8           as BC (unpack)
-import qualified Data.ByteString.Lazy            as LB (empty, readFile)
+import qualified Data.ByteString.Lazy            as LB (ByteString, empty,
+                                                        readFile)
+import           Data.LruCache.IO                (LruHandle, cached,
+                                                  newLruHandle)
 import qualified Data.Text                       as T (pack, unpack)
+import           HIP
 import           Network.Mime                    (MimeType, defaultMimeLookup)
 import           System.Directory                (doesFileExist)
 import           System.FilePath                 (dropDrive, (</>))
--- import           VipsImage
-import           HIP
 
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import qualified Data.Text.Lazy                  as LT (pack)
-import           Network.HTTP.Types              (status404, status500)
+import           Network.HTTP.Types              (status404)
 import           Network.Wai                     (Request (..))
 import           Network.Wai.Handler.Warp        (setHost, setPort)
 import           Web.Scotty                      (ActionM, RoutePattern,
                                                   ScottyM, function, get, param,
                                                   raw, rescue, scottyOpts,
-                                                  setHeader, settings, status,
-                                                  text)
+                                                  setHeader, settings, status)
 
 import           Data.Default.Class              (def)
 
@@ -31,6 +32,8 @@ data Options = Options { getHost :: String
                        , getPort :: Int
                        , getPath :: FilePath
                        }
+
+type LruCache = LruHandle String LB.ByteString
 
 parser :: Parser Options
 parser = Options <$> strOption (long "host"
@@ -56,38 +59,42 @@ main = execParser opts >>= program
      <> header "image-vips - VipsImage server" )
 
 program :: Options -> IO ()
-program Options{getHost = host, getPort = port, getPath = path} =
-  scottyOpts opts $ application path
+program Options{getHost = host, getPort = port, getPath = path} = do
+  lru <- newLruHandle 1000
+  scottyOpts opts $ application path lru
 
   where opts = def { settings = setPort port $ setHost (Host host) (settings def) }
 
-application :: FilePath -> ScottyM ()
-application root = do
-  get matchPath $ getFileHandler root
+application :: FilePath -> LruCache -> ScottyM ()
+application root lru = do
+  get matchPath $ getFileHandler root lru
 
 matchPath :: RoutePattern
 matchPath = function $ \req ->
   Just [("path", LT.pack $ foldr ((</>) . T.unpack) "" (pathInfo req))]
 
-getFileHandler :: FilePath -> ActionM ()
-getFileHandler root = do
+getFileHandler :: FilePath -> LruCache -> ActionM ()
+getFileHandler root lru = do
   path <- filePath root
   width <- fromIntegral <$> param "width" `rescue` (\_ -> return (0 :: Int))
   fileExists <- liftIO $ doesFileExist path
-  if fileExists then sendFileHandler path width
+  if fileExists then sendFileHandler path width lru
                 else status status404 >> raw LB.empty
 
-sendFileHandler :: FilePath -> Int -> ActionM ()
-sendFileHandler path 0 = do
+sendFileHandler :: FilePath -> Int -> LruCache -> ActionM ()
+sendFileHandler path 0 _ = do
   setHeader "Content-Type" $ LT.pack $ BC.unpack $ getMimeType path
   raw =<< liftIO (LB.readFile path)
 
-sendFileHandler path w = do
+sendFileHandler path w lru = do
   setHeader "Content-Type" "image/jpeg"
-  buf <- liftIO $ flip resizeImage w =<< LB.readFile path
-  case buf of
-    Left e    -> status status500 >> text (LT.pack e)
-    Right out -> raw out
+  buf <- liftIO $ cached lru ( path ++ show w ) $ do
+    r <- flip resizeImage w =<< LB.readFile path
+    case r of
+      Left _    -> pure LB.empty
+      Right out -> pure out
+
+  raw buf
 
 filePath :: FilePath -> ActionM FilePath
 filePath root = do
