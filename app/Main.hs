@@ -1,23 +1,24 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.ByteString.Char8           as BC (pack, unpack)
-import qualified Data.ByteString.Lazy            as LB (empty, fromStrict,
-                                                        readFile)
+import qualified Data.ByteString.Char8           as BC (unpack)
+import qualified Data.ByteString.Lazy            as LB (empty, readFile)
 import qualified Data.Text                       as T (pack, unpack)
 import           Network.Mime                    (MimeType, defaultMimeLookup)
 import           System.Directory                (doesFileExist)
 import           System.FilePath                 (dropDrive, (</>))
-import           VipsImage
+-- import           VipsImage
+import           HIP
 
 import           Data.Streaming.Network.Internal (HostPreference (Host))
 import qualified Data.Text.Lazy                  as LT (pack)
-import           Network.HTTP.Types              (status404)
+import           Network.HTTP.Types              (status404, status500)
 import           Network.Wai                     (Request (..))
 import           Network.Wai.Handler.Warp        (setHost, setPort)
 import           Web.Scotty                      (ActionM, RoutePattern,
                                                   ScottyM, function, get, param,
                                                   raw, rescue, scottyOpts,
-                                                  setHeader, settings, status)
+                                                  setHeader, settings, status,
+                                                  text)
 
 import           Data.Default.Class              (def)
 
@@ -55,10 +56,8 @@ main = execParser opts >>= program
      <> header "image-vips - VipsImage server" )
 
 program :: Options -> IO ()
-program Options{getHost = host, getPort = port, getPath = path} = do
-  vipsInit "image-vips"
+program Options{getHost = host, getPort = port, getPath = path} =
   scottyOpts opts $ application path
-  vipsShutdown
 
   where opts = def { settings = setPort port $ setHost (Host host) (settings def) }
 
@@ -85,14 +84,10 @@ sendFileHandler path 0 = do
 
 sendFileHandler path w = do
   setHeader "Content-Type" "image/jpeg"
-  buf <- liftIO $ do
-    img <- openImage (BC.pack path)
-    thumbnail <- vipsThumbnailImage img (fromIntegral w)
-    buf <- saveImage' thumbnail
-    closeImage img
-    closeImage thumbnail
-    pure buf
-  raw $ LB.fromStrict buf
+  buf <- liftIO $ flip resizeImage w =<< LB.readFile path
+  case buf of
+    Left e    -> status status500 >> text (LT.pack e)
+    Right out -> raw out
 
 filePath :: FilePath -> ActionM FilePath
 filePath root = do
