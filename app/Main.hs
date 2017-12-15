@@ -66,8 +66,7 @@ program Options{getHost = host, getPort = port, getPath = path} = do
   where opts = def { settings = setPort port $ setHost (Host host) (settings def) }
 
 application :: FilePath -> LruCache -> ScottyM ()
-application root lru = do
-  get matchPath $ getFileHandler root lru
+application root lru = get matchPath $ getFileHandler root lru
 
 matchPath :: RoutePattern
 matchPath = function $ \req ->
@@ -76,7 +75,7 @@ matchPath = function $ \req ->
 getFileHandler :: FilePath -> LruCache -> ActionM ()
 getFileHandler root lru = do
   path <- filePath root
-  width <- fromIntegral <$> param "width" `rescue` (\_ -> return (0 :: Int))
+  width <- param "width" `rescue` (\_ -> return (0 :: Int))
   fileExists <- liftIO $ doesFileExist path
   if fileExists then sendFileHandler path width lru
                 else status status404 >> raw LB.empty
