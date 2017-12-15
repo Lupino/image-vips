@@ -85,10 +85,14 @@ sendFileHandler path 0 = do
 
 sendFileHandler path w = do
   setHeader "Content-Type" "image/jpeg"
-  liftIO (openImage (BC.pack path)
-    >>= flip vipsThumbnailImage (fromIntegral w)
-    >>= saveImage') >>= raw . LB.fromStrict
-
+  buf <- liftIO $ do
+    img <- openImage (BC.pack path)
+    thumbnail <- vipsThumbnailImage img (fromIntegral w)
+    buf <- saveImage' thumbnail
+    closeImage img
+    closeImage thumbnail
+    pure buf
+  raw $ LB.fromStrict buf
 
 filePath :: FilePath -> ActionM FilePath
 filePath root = do

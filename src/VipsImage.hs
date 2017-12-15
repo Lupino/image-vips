@@ -12,6 +12,7 @@ module VipsImage
   , vipsThumbnailImage
   , saveImage
   , saveImage'
+  , closeImage
   ) where
 
 import           Control.Exception            (Exception, throwIO)
@@ -54,6 +55,11 @@ vipsShutdown = [C.exp| void {vips_shutdown()}|]
 
 openImage :: BS.ByteString -> IO VipsImage
 openImage bs = VipsImage <$> [C.exp| void * {vips_image_new_from_file($bs-ptr:bs, NULL)}|]
+
+closeImage :: VipsImage -> IO ()
+closeImage (VipsImage img) = do
+  ptr <- newForeignPtr_ img
+  [C.exp| void { g_object_unref($fptr-ptr:(void *ptr)) }|]
 
 vipsThumbnailImage :: VipsImage -> CInt -> IO VipsImage
 vipsThumbnailImage (VipsImage in_) w = VipsImage <$> do
