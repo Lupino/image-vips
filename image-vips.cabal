@@ -1,6 +1,6 @@
 name:           image-vips
 version:        0.1.0.0
-synopsis:       Short description of your package
+synopsis:       Thumbnail image with libvips
 description:    Please see the README on Github at <https://github.com/Lupino/image-vips#readme>
 homepage:       https://github.com/Lupino/image-vips#readme
 bug-reports:    https://github.com/Lupino/image-vips/issues
