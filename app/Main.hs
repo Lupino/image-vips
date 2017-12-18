@@ -28,9 +28,10 @@ import           Control.Monad.IO.Class          (liftIO)
 import           Data.Semigroup                  ((<>))
 import           Options.Applicative
 
-data Options = Options { getHost :: String
-                       , getPort :: Int
-                       , getPath :: FilePath
+data Options = Options { getHost    :: String
+                       , getPort    :: Int
+                       , getPath    :: FilePath
+                       , getLruSize :: Int
                        }
 
 type LruCache = LruHandle String LB.ByteString
@@ -49,6 +50,9 @@ parser = Options <$> strOption (long "host"
                  <*> strOption (long "path"
                                 <> metavar "PATH"
                                 <> value ".")
+                 <*> option auto (long "size"
+                                  <> metavar "LRUSIZE"
+                                  <> value 1000)
 
 main :: IO ()
 main = execParser opts >>= program
@@ -59,8 +63,8 @@ main = execParser opts >>= program
      <> header "image-vips - VipsImage server" )
 
 program :: Options -> IO ()
-program Options{getHost = host, getPort = port, getPath = path} = do
-  lru <- newLruHandle 1000
+program Options{getHost = host, getPort = port, getPath = path, getLruSize = size} = do
+  lru <- newLruHandle size
   scottyOpts opts $ application path lru
 
   where opts = def { settings = setPort port $ setHost (Host host) (settings def) }
